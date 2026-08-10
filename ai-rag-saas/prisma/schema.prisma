@@ -1,0 +1,100 @@
+// Prisma Schema —— AI RAG SaaS 数据模型
+// 数据源：默认 SQLite（file:./dev.db），可在 .env 切换为 PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// 用户模型 / User
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  password       String // bcrypt 哈希后的密码
+  name           String?
+  plan           String   @default("free") // free | pro
+  questionsToday Int      @default(0) // 今日已提问次数
+  lastResetDate  String?  // 上次重置日期（YYYY-MM-DD），用于每日配额重置
+  createdAt      DateTime @default(now())
+
+  documents    Document[]
+  conversations Conversation[]
+  usageStats   UsageStat[]
+}
+
+// 文档模型 / Document
+model Document {
+  id         String   @id @default(cuid())
+  userId     String
+  filename   String // 原始文件名
+  title      String // 文档标题
+  content    String // 解析后的纯文本
+  status     String   @default("processing") // processing | ready | failed
+  chunkCount Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chunks Chunk[]
+
+  @@index([userId])
+}
+
+// 文本分块 / Chunk
+model Chunk {
+  id         String   @id @default(cuid())
+  documentId String
+  index      Int // 在文档中的顺序
+  content    String
+  embedding  String // 向量嵌入，JSON 字符串（mock 模式下为关键词哈希向量）
+  createdAt  DateTime @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+}
+
+// 会话 / Conversation
+model Conversation {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  createdAt DateTime @default(now())
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@index([userId])
+}
+
+// 消息 / Message
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  role           String // user | assistant
+  content        String
+  sources        String   @default("[]") // 来源标注，JSON 字符串
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+}
+
+// 使用统计 / UsageStat（按日期聚合）
+model UsageStat {
+  id            String   @id @default(cuid())
+  userId        String
+  date          String // YYYY-MM-DD
+  questionCount Int      @default(0)
+  uploadCount   Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId])
+}

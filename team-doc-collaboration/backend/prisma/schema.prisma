@@ -1,0 +1,114 @@
+// 多租户团队文档协作平台 Prisma Schema
+// Multi-tenant team document collaboration platform Prisma Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// 用户全局角色（super_admin / team_admin / member）
+// User global role
+model User {
+  id           String      @id @default(cuid())
+  email        String      @unique
+  password     String
+  name         String
+  // 全局角色 / global role
+  role         String      @default("member")
+  refreshToken String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  ownedTeams   Team[]      @relation("OwnedTeams")
+  memberships  TeamMember[]
+  documents    Document[]  @relation("DocumentOwner")
+  versions     DocumentVersion[] @relation("DocumentEditor")
+  files        FileAsset[]
+
+  @@map("users")
+}
+
+model Team {
+  id        String       @id @default(cuid())
+  name      String
+  ownerId   String
+  owner     User         @relation("OwnedTeams", fields: [ownerId], references: [id], onDelete: Cascade)
+  members   TeamMember[]
+  documents Document[]
+  files     FileAsset[]
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@map("teams")
+}
+
+model TeamMember {
+  id     String   @id @default(cuid())
+  teamId String
+  userId String
+  // 团队角色（team_admin / member）/ team role
+  role   String   @default("member")
+
+  team   Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([teamId, userId])
+  @@map("team_members")
+}
+
+model Document {
+  id             String             @id @default(cuid())
+  teamId         String
+  title          String
+  content        String             @default("")
+  ownerId        String
+  deletedAt      DateTime?
+  currentVersion Int                @default(1)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  team           Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  owner          User               @relation("DocumentOwner", fields: [ownerId], references: [id])
+  versions       DocumentVersion[]
+
+  @@map("documents")
+}
+
+model DocumentVersion {
+  id         String   @id @default(cuid())
+  documentId String
+  version    Int
+  title      String
+  content    String
+  editorId   String
+  createdAt DateTime @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  editor   User     @relation("DocumentEditor", fields: [editorId], references: [id])
+
+  @@unique([documentId, version])
+  @@map("document_versions")
+}
+
+model FileAsset {
+  id           String   @id @default(cuid())
+  teamId       String
+  filename     String
+  originalName String
+  mimeType     String
+  size         Int
+  path         String
+  uploaderId   String
+  createdAt    DateTime @default(now())
+
+  team     Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  uploader User @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+
+  @@map("file_assets")
+}

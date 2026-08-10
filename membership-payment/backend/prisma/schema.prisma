@@ -1,0 +1,143 @@
+// ============================================================
+// Prisma 数据模型 / Prisma Schema
+// 个人会员与支付闭环网站
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // 默认 SQLite，可通过 .env 切换 PostgreSQL / Default SQLite, switch to PostgreSQL via .env
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// 用户模型 / User Model
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  password     String
+  name         String
+  avatar       String?
+  role         String   @default("user") // user | admin
+  plan         String   @default("free") // free | pro | enterprise
+  points       Int      @default(0)
+  planExpireAt DateTime?
+  lastSignDate DateTime?
+  signStreak   Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  orders         Order[]
+  bills          Bill[]
+  refundRequests RefundRequest[]
+  refundReviewed RefundRequest[] @relation("ReviewedBy")
+  signLogs       SignLog[]
+  pointsLogs     PointsLog[]
+}
+
+// 会员套餐 / Membership Plan
+model MembershipPlan {
+  id          String  @id @default(cuid())
+  name        String
+  code        String  @unique // free | pro | enterprise
+  price       Float
+  currency    String  @default("usd")
+  billingType String  // subscription | oneshot
+  interval    String? // month | year | lifetime（仅订阅制）
+  features    String  // JSON 字符串，权益列表 / JSON string of features
+  active      Boolean @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  orders Order[]
+}
+
+// 订单 / Order
+model Order {
+  id              String    @id @default(cuid())
+  userId          String
+  planId          String
+  amount          Float
+  currency        String    @default("usd")
+  status          String    @default("pending") // pending | paid | cancelled | refunded
+  type            String    // subscription | oneshot
+  stripeSessionId String?
+  pointsUsed      Int       @default(0) // 积分抵扣数量
+  paidAt          DateTime?
+  cancelledAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan           MembershipPlan @relation(fields: [planId], references: [id])
+  bill           Bill?
+  refundRequests RefundRequest[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+// 账单 / Bill
+model Bill {
+  id       String   @id @default(cuid())
+  userId   String
+  orderId  String   @unique
+  amount   Float
+  currency String   @default("usd")
+  issuedAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// 退款申请 / Refund Request
+model RefundRequest {
+  id         String    @id @default(cuid())
+  userId     String
+  orderId    String
+  reason     String
+  status     String    @default("pending") // pending | approved | rejected
+  reviewedBy String?
+  reviewedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  user       User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order      Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  reviewer   User? @relation("ReviewedBy", fields: [reviewedBy], references: [id])
+
+  @@index([userId])
+  @@index([status])
+}
+
+// 签到记录 / Sign Log
+model SignLog {
+  id            String   @id @default(cuid())
+  userId        String
+  date          DateTime
+  pointsAwarded Int
+  createdAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId])
+}
+
+// 积分变动记录 / Points Log
+model PointsLog {
+  id        String   @id @default(cuid())
+  userId    String
+  change    Int      // 正数=获得，负数=消耗 / positive=gained, negative=spent
+  reason    String
+  balance   Int      // 变动后余额 / balance after change
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}

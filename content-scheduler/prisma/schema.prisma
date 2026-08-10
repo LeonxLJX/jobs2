@@ -1,0 +1,81 @@
+// Prisma 数据库模式定义
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// 用户表
+model User {
+  id          String     @id @default(cuid())
+  email       String     @unique
+  password    String
+  name        String
+  notifyEmail String?    // 接收通知的邮箱
+  createdAt   DateTime   @default(now())
+
+  categories Category[]
+  articles   Article[]
+  statDaily  StatDaily[]
+}
+
+// 分类表
+model Category {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  articles Article[]
+}
+
+// 文章表
+model Article {
+  id          String    @id @default(cuid())
+  userId      String
+  categoryId  String?
+  title       String
+  content     String
+  excerpt     String?   // 摘要
+  status      String    @default("draft") // draft | scheduled | published
+  publishAt   DateTime? // 定时发布时间
+  publishedAt DateTime? // 实际发布时间
+  views       Int       @default(0)
+  likes       Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category   Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  publishLogs PublishLog[]
+}
+
+// 发布日志表
+model PublishLog {
+  id         String   @id @default(cuid())
+  articleId  String
+  status     String   // success | failed
+  message    String
+  executedAt DateTime @default(now())
+
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+}
+
+// 每日统计表
+model StatDaily {
+  id             String   @id @default(cuid())
+  userId         String
+  date           String   // YYYY-MM-DD
+  publishedCount Int      @default(0)
+  totalViews     Int      @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+}

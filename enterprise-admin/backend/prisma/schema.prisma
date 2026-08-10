@@ -1,0 +1,167 @@
+// Prisma 数据模型 / Prisma data model
+// 默认 SQLite，开箱即用；.env 切换 MySQL 时，请将 provider 改为 mysql
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// 用户表 / User
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  password  String
+  name      String
+  email     String?
+  phone     String?
+  deptId    String?
+  status    Int      @default(1) // 1 启用 0 禁用 / 1 enabled 0 disabled
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userRoles UserRole[]      @relation("UserRoleToUser")
+  logs      OperationLog[]
+
+  @@map("users")
+}
+
+// 角色表 / Role
+model Role {
+  id          String   @id @default(cuid())
+  name        String
+  code        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users           UserRole[]        @relation("UserRoleToRole")
+  rolePermissions RolePermission[]
+
+  @@map("roles")
+}
+
+// 用户角色关联表 / User-Role join
+model UserRole {
+  id     String @id @default(cuid())
+  userId String
+  roleId String
+
+  user User @relation("UserRoleToUser", fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation("UserRoleToRole", fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@map("user_roles")
+}
+
+// 权限表（菜单 + 按钮） / Permission (menu + button)
+model Permission {
+  id        String @id @default(cuid())
+  name      String
+  code      String @unique
+  type      String // menu | button
+  parentId  String?
+  path      String?
+  component String?
+  icon      String?
+  sort      Int    @default(0)
+  createdAt DateTime @default(now())
+
+  parent   Permission  @relation("PermissionToParent", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children Permission[] @relation("PermissionToParent")
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+// 角色权限关联表 / Role-Permission join
+model RolePermission {
+  id           String @id @default(cuid())
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// 部门表（树形） / Department (tree)
+model Dept {
+  id       String  @id @default(cuid())
+  name     String
+  parentId String?
+  sort     Int     @default(0)
+  leader   String?
+  status   Int     @default(1)
+  createdAt DateTime @default(now())
+
+  parent   Dept  @relation("DeptToParent", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children Dept[] @relation("DeptToParent")
+
+  @@map("depts")
+}
+
+// 系统配置键值对 / System config key-value
+model SystemConfig {
+  id      String @id @default(cuid())
+  key     String @unique
+  value   String
+  remark  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("system_configs")
+}
+
+// 字典类型 / Dictionary type
+model DictType {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique
+  status    Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items DictItem[]
+
+  @@map("dict_types")
+}
+
+// 字典项 / Dictionary item
+model DictItem {
+  id         String   @id @default(cuid())
+  dictTypeId String
+  label      String
+  value      String
+  sort       Int      @default(0)
+  status     Int      @default(1)
+  createdAt  DateTime @default(now())
+
+  dictType DictType @relation(fields: [dictTypeId], references: [id], onDelete: Cascade)
+
+  @@map("dict_items")
+}
+
+// 操作审计日志 / Operation audit log
+model OperationLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  username  String?
+  action    String
+  target    String?
+  ip        String?
+  detail    String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("operation_logs")
+}
